@@ -3,6 +3,8 @@ package keyboard
 import (
     "syscall"
     "unsafe"
+
+    "golang.org/x/sys/windows"
 )
 
 const (
@@ -226,8 +228,8 @@ func inputEventsProducer() {
     for {
         // Wait for events
         r0, _, e1 := syscall.Syscall6(k32_WaitForMultipleObjects.Addr(), 4,
-            uintptr(len(eventHandles)), uintptr(unsafe.Pointer(&eventHandles[0])), 0, 0xFFFFFFFF, 0, 0)
-        if uint32(r0) == 0xFFFFFFFF {
+            uintptr(len(eventHandles)), uintptr(unsafe.Pointer(&eventHandles[0])), 0, windows.INFINITE, 0, 0)
+        if uint32(r0) == windows.WAIT_FAILED {
             input_comm <- keyEvent{err: getError(e1)}
         }
 
