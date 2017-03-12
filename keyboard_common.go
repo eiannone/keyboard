@@ -34,6 +34,7 @@ const (
     KeyArrowDown
     KeyArrowLeft
     KeyArrowRight
+    key_min // see terminfo
 )
 
 const (
