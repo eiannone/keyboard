@@ -87,5 +87,57 @@ const (
 
 // To know if keyboard listening is active or not
 var (
-    isOpen bool = false
+    isOpen        bool = false
+    waitingForKey bool = false
+
+    input_comm = make(chan keyEvent)
+    cancel_key = make(chan struct{})
 )
+
+func Open() (err error) {
+    if (isOpen) {
+        return
+    }
+    err = initConsole()
+    if err == nil {
+        isOpen = true
+    }
+    return
+}
+
+// Should be called after successful initialization when functionality isn't required anymore.
+func Close() {
+    if (!isOpen) {
+        return
+    }
+    if waitingForKey {
+        cancel_key <- struct{}{}
+    }
+    releaseConsole()
+    isOpen = false
+}
+
+func GetKey() (rune, Key, error) {
+    if (!isOpen) {
+        panic("function GetKey() should be called after Open()")
+    }
+    waitingForKey = true
+    defer func() { waitingForKey = false }()
+
+    select {
+    case ev := <-input_comm:
+        return ev.rune, ev.key, ev.err
+
+    case <-cancel_key:
+        return 0, 0, nil
+    }
+}
+
+func GetSingleKey() (ch rune, key Key, err error) {
+    err = Open()
+    if err == nil {
+        ch, key, err = GetKey()
+        Close()
+    }
+    return
+}
