@@ -40,6 +40,10 @@ const (
     right_ctrl_pressed = 0x4
     left_ctrl_pressed  = 0x8
     shift_pressed      = 0x10
+
+    K32_INFINITE    = 0xFFFFFFFF
+    K32_WAIT_FAILED = 0xFFFFFFFF
+    K32_KEY_EVENT   = 0x0001
 )
 
 
@@ -76,10 +80,8 @@ var (
     hInterrupt syscall.Handle
     eventHandles []syscall.Handle
 
-    input_comm       = make(chan keyEvent)
     cancel_comm      = make(chan bool, 1)
     cancel_done_comm = make(chan bool)
-    interrupt_comm   = make(chan struct{})
 
     // This is just to prevent heap allocs at all costs
     tmpArg dword
@@ -226,8 +228,8 @@ func inputEventsProducer() {
     for {
         // Wait for events
         r0, _, e1 := syscall.Syscall6(k32_WaitForMultipleObjects.Addr(), 4,
-            uintptr(len(eventHandles)), uintptr(unsafe.Pointer(&eventHandles[0])), 0, 0xFFFFFFFF, 0, 0)
-        if uint32(r0) == 0xFFFFFFFF {
+            uintptr(len(eventHandles)), uintptr(unsafe.Pointer(&eventHandles[0])), 0, K32_INFINITE, 0, 0)
+        if uint32(r0) == K32_WAIT_FAILED {
             input_comm <- keyEvent{err: getError(e1)}
         }
 
@@ -245,7 +247,7 @@ func inputEventsProducer() {
             input_comm <- keyEvent{err: getError(e1)}
         }
 
-        if input.event_type == 0x1 { // key_event
+        if input.event_type == K32_KEY_EVENT { // key_event
             kEvent := (*k32_event)(unsafe.Pointer(&input.event))
             ev, ok := getKeyEvent(kEvent)
             if ok {
@@ -257,11 +259,7 @@ func inputEventsProducer() {
     }
 }
 
-func Open() (err error) {
-    if (isOpen) {
-        return
-    }
-
+func initConsole() (err error) {
     // Create an interrupt event
     r0, _, e1 := syscall.Syscall6(k32_CreateEventW.Addr(), 4, 0, 0, 0, 0, 0, 0)
     if int(r0) == 0 {
@@ -277,16 +275,10 @@ func Open() (err error) {
 
     eventHandles = []syscall.Handle{hConsoleIn, hInterrupt}
     go inputEventsProducer()
-    isOpen = true
     return
 }
 
-// Should be called after successful initialization when functionality isn't required anymore.
-func Close() {
-    if (!isOpen) {
-        return
-    }
-
+func releaseConsole() {
     // Stop events producer
     cancel_comm <- true
     syscall.Syscall(k32_SetEvent.Addr(), 1, uintptr(hInterrupt), 0, 0) // Send interrupt event
@@ -294,28 +286,4 @@ func Close() {
 
     syscall.Close(hConsoleIn)
     syscall.Close(hInterrupt)
-    isOpen = false
-}
-
-func GetKey() (ch rune, key Key, err error) {
-    if (!isOpen) {
-        panic("function GetKey() should be called after Open()")
-    }
-
-    select {
-    case ev := <-input_comm:
-        return ev.rune, ev.key, ev.err
-
-    case <-interrupt_comm:
-        return
-    }
-}
-
-func GetSingleKey() (ch rune, key Key, err error) {
-    err = Open()
-    if err == nil {
-        ch, key, err = GetKey()
-        Close()
-    }
-    return
 }
