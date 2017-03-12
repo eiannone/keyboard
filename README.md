@@ -3,8 +3,6 @@ Simple library to listen for keystrokes from the keyboard
 
 The code is inspired by [termbox-go](https://github.com/nsf/termbox-go) library.
 
-Currently only Windows OS is supported, sorry! 
-
 ### Installation
 Install and update this go package with `go get -u github.com/eiannone/keyboard`
 

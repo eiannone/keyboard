@@ -52,12 +52,6 @@ type (
     dword     uint32
     word      uint16
 
-    k32_input struct {
-        event_type word
-        _          [2]byte
-        event      [16]byte
-    }
-
     k32_event struct {
         key_down          int32
         repeat_count      word
@@ -78,7 +72,6 @@ var (
 
     hConsoleIn syscall.Handle
     hInterrupt syscall.Handle
-    eventHandles []syscall.Handle
 
     cancel_comm      = make(chan bool, 1)
     cancel_done_comm = make(chan bool)
@@ -224,11 +217,11 @@ func getKeyEvent(r *k32_event) (keyEvent, bool) {
 }
 
 func inputEventsProducer() {
-    var input k32_input
+    var input [20]uint16
     for {
         // Wait for events
         r0, _, e1 := syscall.Syscall6(k32_WaitForMultipleObjects.Addr(), 4,
-            uintptr(len(eventHandles)), uintptr(unsafe.Pointer(&eventHandles[0])), 0, K32_INFINITE, 0, 0)
+            uintptr(2), uintptr(unsafe.Pointer(&hConsoleIn)), 0, K32_INFINITE, 0, 0)
         if uint32(r0) == K32_WAIT_FAILED {
             input_comm <- keyEvent{err: getError(e1)}
         }
@@ -242,13 +235,13 @@ func inputEventsProducer() {
 
         // Get console input
         r0, _, e1 = syscall.Syscall6(k32_ReadConsoleInputW.Addr(), 4,
-            uintptr(hConsoleIn), uintptr(unsafe.Pointer(&input)), 1, uintptr(unsafe.Pointer(&tmpArg)), 0, 0)
+            uintptr(hConsoleIn), uintptr(unsafe.Pointer(&input[0])), 1, uintptr(unsafe.Pointer(&tmpArg)), 0, 0)
         if int(r0) == 0 {
             input_comm <- keyEvent{err: getError(e1)}
         }
 
-        if input.event_type == K32_KEY_EVENT { // key_event
-            kEvent := (*k32_event)(unsafe.Pointer(&input.event))
+        if input[0] == K32_KEY_EVENT {
+            kEvent := (*k32_event)(unsafe.Pointer(&input[2]))
             ev, ok := getKeyEvent(kEvent)
             if ok {
                 for i := 0; i < int(kEvent.repeat_count); i++ {
@@ -273,7 +266,6 @@ func initConsole() (err error) {
         return
     }
 
-    eventHandles = []syscall.Handle{hConsoleIn, hInterrupt}
     go inputEventsProducer()
     return
 }
