@@ -42,6 +42,8 @@ const (
     right_ctrl_pressed = 0x4
     left_ctrl_pressed  = 0x8
     shift_pressed      = 0x10
+
+    k32_keyEvent = 0x1
 )
 
 
@@ -49,12 +51,6 @@ type (
     wchar     uint16
     dword     uint32
     word      uint16
-
-    k32_input struct {
-        event_type word
-        _          [2]byte
-        event      [16]byte
-    }
 
     k32_event struct {
         key_down          int32
@@ -69,14 +65,11 @@ type (
 var (
     kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
-    k32_CreateEventW           = kernel32.NewProc("CreateEventW")
     k32_WaitForMultipleObjects = kernel32.NewProc("WaitForMultipleObjects")
     k32_ReadConsoleInputW      = kernel32.NewProc("ReadConsoleInputW")
-    k32_SetEvent               = kernel32.NewProc("SetEvent")
 
     hConsoleIn syscall.Handle
-    hInterrupt syscall.Handle
-    eventHandles []syscall.Handle
+    hInterrupt windows.Handle
 
     cancel_comm      = make(chan bool, 1)
     cancel_done_comm = make(chan bool)
@@ -222,11 +215,11 @@ func getKeyEvent(r *k32_event) (keyEvent, bool) {
 }
 
 func inputEventsProducer() {
-    var input k32_input
+    var input [20]uint16
     for {
         // Wait for events
         r0, _, e1 := syscall.Syscall6(k32_WaitForMultipleObjects.Addr(), 4,
-            uintptr(len(eventHandles)), uintptr(unsafe.Pointer(&eventHandles[0])), 0, windows.INFINITE, 0, 0)
+            uintptr(2), uintptr(unsafe.Pointer(&hConsoleIn)), 0, windows.INFINITE, 0, 0)
         if uint32(r0) == windows.WAIT_FAILED {
             input_comm <- keyEvent{err: getError(e1)}
         }
@@ -240,13 +233,13 @@ func inputEventsProducer() {
 
         // Get console input
         r0, _, e1 = syscall.Syscall6(k32_ReadConsoleInputW.Addr(), 4,
-            uintptr(hConsoleIn), uintptr(unsafe.Pointer(&input)), 1, uintptr(unsafe.Pointer(&tmpArg)), 0, 0)
+            uintptr(hConsoleIn), uintptr(unsafe.Pointer(&input[0])), 1, uintptr(unsafe.Pointer(&tmpArg)), 0, 0)
         if int(r0) == 0 {
             input_comm <- keyEvent{err: getError(e1)}
         }
 
-        if input.event_type == 0x1 { // key_event
-            kEvent := (*k32_event)(unsafe.Pointer(&input.event))
+        if input[0] == k32_keyEvent {
+            kEvent := (*k32_event)(unsafe.Pointer(&input[2]))
             ev, ok := getKeyEvent(kEvent)
             if ok {
                 for i := 0; i < int(kEvent.repeat_count); i++ {
@@ -259,19 +252,17 @@ func inputEventsProducer() {
 
 func initConsole() (err error) {
     // Create an interrupt event
-    r0, _, e1 := syscall.Syscall6(k32_CreateEventW.Addr(), 4, 0, 0, 0, 0, 0, 0)
-    if int(r0) == 0 {
-        return getError(e1)
-    }
-    hInterrupt = syscall.Handle(r0)
-
-    hConsoleIn, err = syscall.Open("CONIN$", syscall.O_RDWR, 0)
+    hInterrupt, err = windows.CreateEvent(nil, 0, 0, nil)
     if err != nil {
-        syscall.Close(hInterrupt)
+        return err
+    }
+
+    hConsoleIn, err = syscall.Open("CONIN$", windows.O_RDWR, 0)
+    if err != nil {
+        windows.Close(hInterrupt)
         return
     }
 
-    eventHandles = []syscall.Handle{hConsoleIn, hInterrupt}
     go inputEventsProducer()
     return
 }
@@ -279,9 +270,9 @@ func initConsole() (err error) {
 func releaseConsole() {
     // Stop events producer
     cancel_comm <- true
-    syscall.Syscall(k32_SetEvent.Addr(), 1, uintptr(hInterrupt), 0, 0) // Send interrupt event
+    windows.SetEvent(hInterrupt)
     <-cancel_done_comm
 
     syscall.Close(hConsoleIn)
-    syscall.Close(hInterrupt)
+    windows.Close(hInterrupt)
 }
