@@ -133,7 +133,6 @@ func inputEventsProducer() {
     }
 }
 
-// Credits to: http://stackoverflow.com/a/17278730/939269
 func initConsole() (err error) {
     out, err = os.OpenFile("/dev/tty", unix.O_WRONLY, 0)
     if err != nil {

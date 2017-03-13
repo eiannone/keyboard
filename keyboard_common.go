@@ -10,7 +10,7 @@ type (
     }
 )
 
-// Key constants, see Event.Key field.
+// Key constants, see GetKey() function.
 const (
     KeyF1 Key = 0xFFFF - iota
     KeyF2
@@ -86,7 +86,6 @@ const (
     KeyCtrl8          Key = 0x7F
 )
 
-// To know if keyboard listening is active or not
 var (
     isOpen        bool = false
     waitingForKey bool = false
@@ -108,7 +107,7 @@ func Open() (err error) {
 
 // Should be called after successful initialization when functionality isn't required anymore.
 func Close() {
-    if (!isOpen) {
+    if !isOpen {
         return
     }
     if waitingForKey {
@@ -119,7 +118,7 @@ func Close() {
 }
 
 func GetKey() (rune, Key, error) {
-    if (!isOpen) {
+    if !isOpen {
         panic("function GetKey() should be called after Open()")
     }
     waitingForKey = true

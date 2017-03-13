@@ -31,6 +31,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer keyboard.Close()
 
 	fmt.Println("Press ESC to quit")
 	for {
@@ -41,7 +42,6 @@ func main() {
 			break
 		}
 		fmt.Printf("You pressed: %q\r\n", char)
-	}
-	keyboard.Close()
+	}	
 }
 ```
