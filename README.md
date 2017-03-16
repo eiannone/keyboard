@@ -17,7 +17,7 @@ if (err != nil) {
 fmt.Printf("You pressed: %q\r\n", char)
 ```
 
-Example of getting multiple keystrokes:
+Example of getting a series of keystrokes:
 ```go
 package main
 

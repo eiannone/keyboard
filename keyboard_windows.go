@@ -243,7 +243,13 @@ func inputEventsProducer() {
             ev, ok := getKeyEvent(kEvent)
             if ok {
                 for i := 0; i < int(kEvent.repeat_count); i++ {
-                    input_comm <- ev
+                    select {
+                    case <-cancel_comm:
+                        cancel_done_comm <- true
+                        return
+                    case input_comm <- ev:
+                        break
+                    }
                 }
             }
         }
