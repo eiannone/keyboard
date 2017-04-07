@@ -80,9 +80,9 @@ func extract_event(inbuf []byte) int {
             return size
         }
 
-        // it's not escape sequence, then it's Esc event
+        // it's not a recognized escape sequence, then return Esc
         input_comm <- keyEvent{key: KeyEsc}
-        return 1
+        return len(inbuf)
     }
 
     // if we're here, this is not an escape sequence and not an alt sequence
