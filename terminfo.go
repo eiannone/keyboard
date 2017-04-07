@@ -32,19 +32,13 @@ var (
         "\x1bOP", "\x1bOQ", "\x1bOR", "\x1bOS", "\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~", "\x1b[2~", "\x1b[3~", "\x1b[1~", "\x1b[4~", "\x1b[5~", "\x1b[6~", "\x1bOA", "\x1bOB", "\x1bOD", "\x1bOC",
     }
     xterm_keys = []string{
-        "\x1bOP", "\x1bOQ", "\x1bOR", "\x1bOS", "\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~", "\x1b[2~", "\x1b[3~", "\x1bOH", "\x1bOF", "\x1b[5~", "\x1b[6~", "\x1bOA", "\x1bOB", "\x1bOD", "\x1bOC",
-    }
-    xterm_256color_keys = []string{
         "\x1bOP", "\x1bOQ", "\x1bOR", "\x1bOS", "\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~", "\x1b[2~", "\x1b[3~", "\x1b[H", "\x1b[F", "\x1b[5~", "\x1b[6~", "\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C",
     }
-    rxvt_unicode_keys = []string{
+    rxvt_keys = []string{
         "\x1b[11~", "\x1b[12~", "\x1b[13~", "\x1b[14~", "\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~", "\x1b[2~", "\x1b[3~", "\x1b[7~", "\x1b[8~", "\x1b[5~", "\x1b[6~", "\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C",
     }
     linux_keys = []string{
         "\x1b[[A", "\x1b[[B", "\x1b[[C", "\x1b[[D", "\x1b[[E", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~", "\x1b[2~", "\x1b[3~", "\x1b[1~", "\x1b[4~", "\x1b[5~", "\x1b[6~", "\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C",
-    }
-    rxvt_256color_keys = []string{
-        "\x1b[11~", "\x1b[12~", "\x1b[13~", "\x1b[14~", "\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~", "\x1b[2~", "\x1b[3~", "\x1b[7~", "\x1b[8~", "\x1b[5~", "\x1b[6~", "\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C",
     }
 
     terms = []struct {
@@ -54,10 +48,10 @@ var (
         {"Eterm", eterm_keys},
         {"screen", screen_keys},
         {"xterm", xterm_keys},
-        {"xterm-256color", xterm_256color_keys},
-        {"rxvt-unicode", rxvt_unicode_keys},
+        {"xterm-256color", xterm_keys},
+        {"rxvt-unicode", rxvt_keys},
+        {"rxvt-256color", rxvt_keys},
         {"linux", linux_keys},
-        {"rxvt-256color", rxvt_256color_keys},
     }
 )
 
@@ -142,7 +136,7 @@ func setup_term_builtin() error {
         keys    []string
     }{
         {"xterm", xterm_keys},
-        {"rxvt", rxvt_unicode_keys},
+        {"rxvt", rxvt_keys},
         {"linux", linux_keys},
         {"Eterm", eterm_keys},
         {"screen", screen_keys},
