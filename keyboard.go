@@ -34,7 +34,7 @@ var (
 
     sigio      = make(chan os.Signal, 1)
     quit       = make(chan int)
-    inbuf      = make([]byte, 0, 64)
+    inbuf      = make([]byte, 0, 128)
     input_buf  = make(chan input_event)
 )
 
@@ -121,7 +121,6 @@ func inputEventsProducer() {
             }
 
             inbuf = append(inbuf, ev.data...)
-            input_buf <- ev
             size = extract_event(inbuf)
             if size != 0 {
                 copy(inbuf, inbuf[size:])
@@ -192,8 +191,7 @@ func initConsole() (err error) {
                     }
                     select {
                     case input_buf <- input_event{buf[:n], err}:
-                        ie := <-input_buf
-                        buf = ie.data[:128]
+                        continue
                     case <-quit:
                         return
                     }
