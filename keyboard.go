@@ -158,7 +158,7 @@ func initConsole() (err error) {
         return
     }
 
-    err = ioctl(unix.TCGETS, &orig_tios)
+    err = ioctl(ioctl_GETATTR, &orig_tios)
     if err != nil {
         return
     }
@@ -174,7 +174,7 @@ func initConsole() (err error) {
     tios.Cc[unix.VMIN] = 1
     tios.Cc[unix.VTIME] = 0
 
-    err = ioctl(unix.TCSETS, &tios)
+    err = ioctl(ioctl_SETATTR, &tios)
     if err != nil {
         return err
     }
@@ -208,7 +208,7 @@ func initConsole() (err error) {
 
 func releaseConsole() {
     quit <- 1
-    ioctl(unix.TCSETS, &orig_tios)
+    ioctl(ioctl_SETATTR, &orig_tios)
     out.Close()
     unix.Close(in)
 }
