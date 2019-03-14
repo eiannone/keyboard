@@ -189,6 +189,9 @@ func initConsole() (err error) {
                     if err == unix.EAGAIN || err == unix.EWOULDBLOCK {
                         break
                     }
+                    if err != nil {
+                        n = 0
+                    }
                     select {
                     case input_buf <- input_event{buf[:n], err}:
                         continue
