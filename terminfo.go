@@ -15,7 +15,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
