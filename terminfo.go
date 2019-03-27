@@ -13,11 +13,12 @@ package keyboard
 import (
     "bytes"
     "encoding/binary"
-    "os"
+	"encoding/hex"
     "errors"
-    "strings"
+	"fmt"
     "io/ioutil"
-    "encoding/hex"
+	"os"
+	"strings"
 )
 
 const (
@@ -136,7 +137,10 @@ func setup_term_builtin() error {
         keys    []string
     }{
         {"xterm", xterm_keys},
+		{"xterm-256color", xterm_keys},
         {"rxvt", rxvt_keys},
+		{"rxvt-unicode", rxvt_keys},
+		{"rxvt-256color", rxvt_keys},
         {"linux", linux_keys},
         {"Eterm", eterm_keys},
         {"screen", screen_keys},
@@ -205,11 +209,19 @@ func setup_term() (err error) {
         return
     }
 
+	if header[0] != 542 && header[0] != 282 {
+		return setup_term_builtin()
+	}
+
+	number_sec_len := int16(2)
+	if header[0] == 542 {
+		number_sec_len = 4
+	}
     if (header[1]+header[2])%2 != 0 {
         // old quirk to align everything on word boundaries
         header[2] += 1
     }
-    str_offset = ti_header_length + header[1] + header[2] + 2*header[3]
+	str_offset = ti_header_length + header[1] + header[2] + number_sec_len*header[3]
     table_offset = str_offset + 2*header[4]
 
     // "Maps" the special keys constants from termbox.go to the number of the respective
