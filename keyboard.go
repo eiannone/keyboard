@@ -8,7 +8,6 @@ import (
     "syscall"
     "unicode/utf8"
     "strings"
-    "fmt"
     "runtime"
     "unsafe"
 
@@ -144,7 +143,7 @@ func initConsole() (err error) {
 
     err = setup_term()
     if err != nil {
-        return fmt.Errorf("Error while reading terminfo data: %v", err)
+        return Errors.New("Error while reading terminfo data: " + err.Error())
     }
 
     signal.Notify(sigio, unix.SIGIO)
