@@ -130,6 +130,8 @@ func GetKey() (rune, Key, error) {
 
     case <-cancel_key:
         return 0, 0, nil
+    default:
+        return 0, 0, nil
     }
 }
 
