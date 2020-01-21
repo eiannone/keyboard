@@ -10,6 +10,7 @@ import (
     "strings"
     "runtime"
     "unsafe"
+    "errors"
 
     "golang.org/x/sys/unix"
 )
@@ -143,7 +144,7 @@ func initConsole() (err error) {
 
     err = setup_term()
     if err != nil {
-        return Errors.New("Error while reading terminfo data: " + err.Error())
+        return errors.New("Error while reading terminfo data: " + err.Error())
     }
 
     signal.Notify(sigio, unix.SIGIO)
