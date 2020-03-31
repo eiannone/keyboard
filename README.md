@@ -45,3 +45,36 @@ func main() {
 	}	
 }
 ```
+
+Example of getting keystrokes in a non-blocking loop:
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/eiannoe/keyboard"
+)
+
+func main() {
+	err := keyboard.Open()
+	if err != nil {
+		panic(err)
+	}
+	defer keyboard.Close()
+
+	fmt.Println("Press ESC to quit")
+	fmt.Println("Starting loop...")
+	for {
+		char, key, err := keyboard.GetKey()
+		if (err != nil) {
+			panic(err)
+		} else if (key == keyboard.KeyEsc) {
+			fmt.Println("Exiting loop!")
+			break
+		}
+		fmt.Printf("You pressed: %q\r\n", char)
+		time.Sleep(time.Second * 1)
+		fmt.Println("Continuing loop...")
+	}	
+}
+```
