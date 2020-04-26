@@ -185,15 +185,17 @@ func initConsole() (err error) {
             select {
             case <-sigio:
                 for {
-                    n, err := syscall.Read(in, buf)
+                    bytesRead, err := syscall.Read(in, buf)
                     if err == unix.EAGAIN || err == unix.EWOULDBLOCK {
                         break
                     }
                     if err != nil {
-                        n = 0
+                        bytesRead = 0
                     }
+                    data := make([]byte, bytesRead)
+                    copy(data, buf)
                     select {
-                    case input_buf <- input_event{buf[:n], err}:
+                    case input_buf <- input_event{data, err}:
                         continue
                     case <-quit:
                         return
