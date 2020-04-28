@@ -89,12 +89,10 @@ const (
 )
 
 var (
-	waitingForKey bool = false
-
-	ping       = make(chan bool)
-	busy       = make(chan bool)
-	input_comm = make(chan keyEvent)
-	cancel_key = make(chan struct{})
+	ping          = make(chan bool)
+	busy          = make(chan bool)
+	waitingForKey = make(chan bool)
+	input_comm    = make(chan keyEvent)
 )
 
 func Open() (err error) {
@@ -136,17 +134,26 @@ func Close() error {
 	default:
 		return nil // already closed
 	}
+
 	// Signal busy operation
 	go func() {
 		for <-busy {
 		} // Close the routine when busy is false
 	}()
+
 	// Stop responding to ping
 	ping <- false
-	if waitingForKey {
-		cancel_key <- struct{}{}
+
+	// Cancel GetKey() operations
+	select {
+	case waitingForKey <- false:
+		break
+	default:
 	}
+
+	// Release the console
 	releaseConsole()
+
 	busy <- false
 	return nil
 }
@@ -159,15 +166,23 @@ func GetKey() (rune, Key, error) {
 	default:
 		panic("function GetKey() should be called after Open()")
 	}
-	waitingForKey = true
-	defer func() { waitingForKey = false }()
-
+	// Check if already waiting for key
 	select {
-	case ev := <-input_comm:
-		return ev.rune, ev.key, ev.err
+	case waitingForKey <- true:
+		return 0, 0, errors.New("already waiting for key")
+	default:
+	}
 
-	case <-cancel_key:
-		return 0, 0, nil
+	for {
+		select {
+		case ev := <-input_comm:
+			return ev.rune, ev.key, ev.err
+
+		case keepAlive := <-waitingForKey:
+			if !keepAlive {
+				return 0, 0, errors.New("operation canceled")
+			}
+		}
 	}
 }
 
@@ -175,7 +190,10 @@ func GetSingleKey() (ch rune, key Key, err error) {
 	err = Open()
 	if err == nil {
 		ch, key, err = GetKey()
-		err = Close()
+		errClosing := Close()
+		if err == nil {
+			err = errClosing
+		}
 	}
 	return
 }
