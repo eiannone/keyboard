@@ -70,8 +70,7 @@ var (
 	hConsoleIn syscall.Handle
 	hInterrupt windows.Handle
 
-	cancel_comm      = make(chan bool, 1)
-	cancel_done_comm = make(chan bool, 1)
+	quit = make(chan bool)
 
 	// This is just to prevent heap allocs at all costs
 	tmpArg dword
@@ -215,18 +214,23 @@ func getKeyEvent(r *k32_event) (keyEvent, bool) {
 
 func produceEvent(event keyEvent) bool {
 	select {
-	case input_comm <- event:
-		return true
-	case <-cancel_comm:
-		cancel_done_comm <- true
+	case <-quit:
 		return false
+	case inputComm <- event:
+		return true
 	}
 }
 
 func inputEventsProducer() {
 	var input [20]uint16
 	for {
+		select {
+		case <-quit:
+			return
+		default:
+		}
 		// Wait for events
+		// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitformultipleobjects
 		r0, _, e1 := syscall.Syscall6(k32_WaitForMultipleObjects.Addr(), 4,
 			uintptr(2), uintptr(unsafe.Pointer(&hConsoleIn)), 0, windows.INFINITE, 0, 0)
 		if uint32(r0) == windows.WAIT_FAILED && false == produceEvent(keyEvent{err: getError(e1)}) {
@@ -249,13 +253,6 @@ func inputEventsProducer() {
 						return
 					}
 				}
-			}
-		} else {
-			select {
-			case <-cancel_comm:
-				cancel_done_comm <- true
-				return
-			default:
 			}
 		}
 	}
@@ -280,9 +277,8 @@ func initConsole() (err error) {
 
 func releaseConsole() {
 	// Stop events producer
-	cancel_comm <- true
 	windows.SetEvent(hInterrupt)
-	<-cancel_done_comm
+	quit <- true
 
 	syscall.Close(hConsoleIn)
 	windows.Close(hInterrupt)

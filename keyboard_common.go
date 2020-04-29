@@ -92,7 +92,7 @@ var (
 	ping          = make(chan bool)
 	busy          = make(chan bool)
 	waitingForKey = make(chan bool)
-	input_comm    = make(chan keyEvent)
+	inputComm     = make(chan keyEvent, 10)
 )
 
 func Open() (err error) {
@@ -120,6 +120,8 @@ func Open() (err error) {
 		} // Close the routine when ping is false
 	}()
 	busy <- false
+	// Wait for ping subroutine
+	ping <- true
 	return
 }
 
@@ -164,7 +166,7 @@ func GetKey() (rune, Key, error) {
 	case ping <- true:
 		break
 	default:
-		panic("function GetKey() should be called after Open()")
+		return 0, 0, errors.New("keyboard not opened")
 	}
 	// Check if already waiting for key
 	select {
@@ -175,7 +177,7 @@ func GetKey() (rune, Key, error) {
 
 	for {
 		select {
-		case ev := <-input_comm:
+		case ev := <-inputComm:
 			return ev.rune, ev.key, ev.err
 
 		case keepAlive := <-waitingForKey:

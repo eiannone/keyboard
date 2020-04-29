@@ -32,10 +32,11 @@ var (
 	// termbox inner state
 	orig_tios unix.Termios
 
-	sigio     = make(chan os.Signal, 1)
-	quit      = make(chan int)
-	inbuf     = make([]byte, 0, 128)
-	input_buf = make(chan input_event)
+	sigio       = make(chan os.Signal, 1)
+	quitEvProd  = make(chan bool)
+	quitConsole = make(chan bool)
+	inbuf       = make([]byte, 0, 128)
+	input_buf   = make(chan input_event)
 )
 
 func fcntl(cmd int, arg int) error {
@@ -99,42 +100,37 @@ func extract_event(inbuf []byte) (int, keyEvent) {
 	return 0, keyEvent{}
 }
 
-func produceEvent(event keyEvent) {
-	select {
-	case input_comm <- event:
-		return
-	case <-quit:
-		return
-	}
-}
-
 // Wait for an event and return it. This is a blocking function call.
 func inputEventsProducer() {
-	// try to extract event from input buffer, return on success
-	size, event := extract_event(inbuf)
-	if size != 0 {
-		copy(inbuf, inbuf[size:])
-		inbuf = inbuf[:len(inbuf)-size]
-		produceEvent(event)
-	}
-
 	for {
 		select {
+		case <-quitEvProd:
+			return
 		case ev := <-input_buf:
 			if ev.err != nil {
-				produceEvent(keyEvent{err: ev.err})
-				return
+				select {
+				case <-quitEvProd:
+					return
+				case inputComm <- keyEvent{err: ev.err}:
+				}
+				break
 			}
-
 			inbuf = append(inbuf, ev.data...)
-			size, event = extract_event(inbuf)
-			if size != 0 {
-				copy(inbuf, inbuf[size:])
-				inbuf = inbuf[:len(inbuf)-size]
-				produceEvent(event)
+			for {
+				size, event := extract_event(inbuf)
+				if size > 0 {
+					select {
+					case <-quitEvProd:
+						return
+					case inputComm <- event:
+					}
+					copy(inbuf, inbuf[size:])
+					inbuf = inbuf[:len(inbuf)-size]
+				}
+				if size == 0 || len(inbuf) == 0 {
+					break
+				}
 			}
-		case <-quit:
-			return
 		}
 	}
 }
@@ -183,13 +179,15 @@ func initConsole() (err error) {
 
 	err = ioctl(ioctl_SETATTR, &tios)
 	if err != nil {
-		return err
+		return
 	}
 
 	go func() {
 		buf := make([]byte, 128)
 		for {
 			select {
+			case <-quitConsole:
+				return
 			case <-sigio:
 				for {
 					bytesRead, err := syscall.Read(in, buf)
@@ -202,14 +200,12 @@ func initConsole() (err error) {
 					data := make([]byte, bytesRead)
 					copy(data, buf)
 					select {
+					case <-quitConsole:
+						return
 					case input_buf <- input_event{data, err}:
 						continue
-					case <-quit:
-						return
 					}
 				}
-			case <-quit:
-				return
 			}
 		}
 	}()
@@ -219,7 +215,8 @@ func initConsole() (err error) {
 }
 
 func releaseConsole() {
-	quit <- 1
+	quitConsole <- true
+	quitEvProd <- true
 	ioctl(ioctl_SETATTR, &orig_tios)
 	out.Close()
 	unix.Close(in)
