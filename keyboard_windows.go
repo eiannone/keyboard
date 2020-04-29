@@ -224,17 +224,17 @@ func produceEvent(event keyEvent) bool {
 func inputEventsProducer() {
 	var input [20]uint16
 	for {
-		select {
-		case <-quit:
-			return
-		default:
-		}
 		// Wait for events
 		// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitformultipleobjects
 		r0, _, e1 := syscall.Syscall6(k32_WaitForMultipleObjects.Addr(), 4,
 			uintptr(2), uintptr(unsafe.Pointer(&hConsoleIn)), 0, windows.INFINITE, 0, 0)
 		if uint32(r0) == windows.WAIT_FAILED && false == produceEvent(keyEvent{err: getError(e1)}) {
 			return
+		}
+		select {
+		case <-quit:
+			return
+		default:
 		}
 
 		// Get console input
