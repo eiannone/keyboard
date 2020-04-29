@@ -4,15 +4,13 @@ package keyboard
 
 import (
 	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"os/signal"
 	"runtime"
 	"strings"
 	"syscall"
 	"unicode/utf8"
-	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 type (
@@ -38,23 +36,6 @@ var (
 	inbuf       = make([]byte, 0, 128)
 	input_buf   = make(chan input_event)
 )
-
-func fcntl(cmd uint, arg int) error {
-	_, _, e := syscall.Syscall(unix.SYS_FCNTL, uintptr(in), uintptr(cmd), uintptr(arg))
-	if e != 0 {
-		return e
-	}
-
-	return nil
-}
-
-func ioctl(cmd uint, termios *unix.Termios) error {
-	r, _, e := syscall.Syscall(unix.SYS_IOCTL, out.Fd(), uintptr(cmd), uintptr(unsafe.Pointer(termios)))
-	if r != 0 {
-		return os.NewSyscallError("SYS_IOCTL", e)
-	}
-	return nil
-}
 
 func parse_escape_sequence(buf []byte) (size int, event keyEvent) {
 	bufstr := string(buf)
@@ -152,17 +133,15 @@ func initConsole() (err error) {
 
 	signal.Notify(sigio, unix.SIGIO)
 
-	err = fcntl(unix.F_SETFL, unix.O_ASYNC|unix.O_NONBLOCK)
-	if err != nil {
+	if _, err = unix.FcntlInt(uintptr(in), unix.F_SETFL, unix.O_ASYNC|unix.O_NONBLOCK); err != nil {
 		return
 	}
-	err = fcntl(unix.F_SETOWN, unix.Getpid())
+	_, err = unix.FcntlInt(uintptr(in), unix.F_SETOWN, unix.Getpid())
 	if runtime.GOOS != "darwin" && err != nil {
 		return
 	}
 
-	err = ioctl(ioctl_GETATTR, &orig_tios)
-	if err != nil {
+	if err = unix.IoctlSetTermios(int(out.Fd()), ioctl_GETATTR, &orig_tios); err != nil {
 		return
 	}
 
@@ -177,8 +156,7 @@ func initConsole() (err error) {
 	tios.Cc[unix.VMIN] = 1
 	tios.Cc[unix.VTIME] = 0
 
-	err = ioctl(ioctl_SETATTR, &tios)
-	if err != nil {
+	if err = unix.IoctlSetTermios(int(out.Fd()), ioctl_SETATTR, &tios); err != nil {
 		return
 	}
 
@@ -217,7 +195,7 @@ func initConsole() (err error) {
 func releaseConsole() {
 	quitConsole <- true
 	quitEvProd <- true
-	ioctl(ioctl_SETATTR, &orig_tios)
+	unix.IoctlSetTermios(int(out.Fd()), ioctl_SETATTR, &orig_tios)
 	out.Close()
 	unix.Close(in)
 }
