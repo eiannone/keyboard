@@ -39,7 +39,7 @@ var (
 	input_buf   = make(chan input_event)
 )
 
-func fcntl(cmd int, arg int) error {
+func fcntl(cmd uint, arg int) error {
 	_, _, e := syscall.Syscall(unix.SYS_FCNTL, uintptr(in), uintptr(cmd), uintptr(arg))
 	if e != 0 {
 		return e
@@ -48,7 +48,7 @@ func fcntl(cmd int, arg int) error {
 	return nil
 }
 
-func ioctl(cmd int, termios *unix.Termios) error {
+func ioctl(cmd uint, termios *unix.Termios) error {
 	r, _, e := syscall.Syscall(unix.SYS_IOCTL, out.Fd(), uintptr(cmd), uintptr(unsafe.Pointer(termios)))
 	if r != 0 {
 		return os.NewSyscallError("SYS_IOCTL", e)
