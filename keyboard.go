@@ -3,7 +3,7 @@
 package keyboard
 
 import (
-	"fmt"
+	"errors"
 	"golang.org/x/sys/unix"
 	"os"
 	"os/signal"
@@ -56,12 +56,18 @@ func extract_event(inbuf []byte) (int, keyEvent) {
 	}
 
 	if inbuf[0] == '\033' {
+		if len(inbuf) == 1 {
+			return 1, keyEvent{key: KeyEsc}
+		}
 		// possible escape sequence
 		if size, event := parse_escape_sequence(inbuf); size != 0 {
 			return size, event
 		} else {
-			// it's not a recognized escape sequence, then return Esc
-			return len(inbuf), keyEvent{key: KeyEsc}
+			// it's not a recognized escape sequence, return error
+			i := 1 // check for multiple sequences in the buffer
+			for ; i < len(inbuf) || inbuf[i] != '\033'; i++ {
+			}
+			return i, keyEvent{key: KeyEsc, err: errors.New("Unrecognized escape sequence")}
 		}
 	}
 
@@ -128,7 +134,7 @@ func initConsole() (err error) {
 
 	err = setup_term()
 	if err != nil {
-		return fmt.Errorf("Error while reading terminfo data: %v", err)
+		return errors.New("Error while reading terminfo data:" + err.Error())
 	}
 
 	signal.Notify(sigio, unix.SIGIO)
