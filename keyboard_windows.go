@@ -84,8 +84,8 @@ func getError(errno syscall.Errno) error {
 	}
 }
 
-func getKeyEvent(r *k32_event) (keyEvent, bool) {
-	e := keyEvent{}
+func getKeyEvent(r *k32_event) (KeyEvent, bool) {
+	e := KeyEvent{}
 
 	if r.key_down == 0 {
 		return e, false
@@ -96,29 +96,29 @@ func getKeyEvent(r *k32_event) (keyEvent, bool) {
 	if r.virtual_key_code >= vk_f1 && r.virtual_key_code <= vk_f12 {
 		switch r.virtual_key_code {
 		case vk_f1:
-			e.key = KeyF1
+			e.Key = KeyF1
 		case vk_f2:
-			e.key = KeyF2
+			e.Key = KeyF2
 		case vk_f3:
-			e.key = KeyF3
+			e.Key = KeyF3
 		case vk_f4:
-			e.key = KeyF4
+			e.Key = KeyF4
 		case vk_f5:
-			e.key = KeyF5
+			e.Key = KeyF5
 		case vk_f6:
-			e.key = KeyF6
+			e.Key = KeyF6
 		case vk_f7:
-			e.key = KeyF7
+			e.Key = KeyF7
 		case vk_f8:
-			e.key = KeyF8
+			e.Key = KeyF8
 		case vk_f9:
-			e.key = KeyF9
+			e.Key = KeyF9
 		case vk_f10:
-			e.key = KeyF10
+			e.Key = KeyF10
 		case vk_f11:
-			e.key = KeyF11
+			e.Key = KeyF11
 		case vk_f12:
-			e.key = KeyF12
+			e.Key = KeyF12
 		default:
 			panic("unreachable")
 		}
@@ -129,90 +129,90 @@ func getKeyEvent(r *k32_event) (keyEvent, bool) {
 	if r.virtual_key_code <= vk_delete {
 		switch r.virtual_key_code {
 		case vk_insert:
-			e.key = KeyInsert
+			e.Key = KeyInsert
 		case vk_delete:
-			e.key = KeyDelete
+			e.Key = KeyDelete
 		case vk_home:
-			e.key = KeyHome
+			e.Key = KeyHome
 		case vk_end:
-			e.key = KeyEnd
+			e.Key = KeyEnd
 		case vk_pgup:
-			e.key = KeyPgup
+			e.Key = KeyPgup
 		case vk_pgdn:
-			e.key = KeyPgdn
+			e.Key = KeyPgdn
 		case vk_arrow_up:
-			e.key = KeyArrowUp
+			e.Key = KeyArrowUp
 		case vk_arrow_down:
-			e.key = KeyArrowDown
+			e.Key = KeyArrowDown
 		case vk_arrow_left:
-			e.key = KeyArrowLeft
+			e.Key = KeyArrowLeft
 		case vk_arrow_right:
-			e.key = KeyArrowRight
+			e.Key = KeyArrowRight
 		case vk_backspace:
 			if ctrlPressed {
-				e.key = KeyBackspace2
+				e.Key = KeyBackspace2
 			} else {
-				e.key = KeyBackspace
+				e.Key = KeyBackspace
 			}
 		case vk_tab:
-			e.key = KeyTab
+			e.Key = KeyTab
 		case vk_enter:
-			e.key = KeyEnter
+			e.Key = KeyEnter
 		case vk_esc:
-			e.key = KeyEsc
+			e.Key = KeyEsc
 		case vk_space:
 			if ctrlPressed {
 				// manual return here, because KeyCtrlSpace is zero
-				e.key = KeyCtrlSpace
+				e.Key = KeyCtrlSpace
 				return e, true
 			} else {
-				e.key = KeySpace
+				e.Key = KeySpace
 			}
 		}
 
-		if e.key != 0 {
+		if e.Key != 0 {
 			return e, true
 		}
 	}
 
 	if ctrlPressed {
 		if Key(r.unicode_char) >= KeyCtrlA && Key(r.unicode_char) <= KeyCtrlRsqBracket {
-			e.key = Key(r.unicode_char)
+			e.Key = Key(r.unicode_char)
 			return e, true
 		}
 		switch r.virtual_key_code {
 		case 192, 50:
 			// manual return here, because KeyCtrl2 is zero
-			e.key = KeyCtrl2
+			e.Key = KeyCtrl2
 			return e, true
 		case 51:
-			e.key = KeyCtrl3
+			e.Key = KeyCtrl3
 		case 52:
-			e.key = KeyCtrl4
+			e.Key = KeyCtrl4
 		case 53:
-			e.key = KeyCtrl5
+			e.Key = KeyCtrl5
 		case 54:
-			e.key = KeyCtrl6
+			e.Key = KeyCtrl6
 		case 189, 191, 55:
-			e.key = KeyCtrl7
+			e.Key = KeyCtrl7
 		case 8, 56:
-			e.key = KeyCtrl8
+			e.Key = KeyCtrl8
 		}
 
-		if e.key != 0 {
+		if e.Key != 0 {
 			return e, true
 		}
 	}
 
 	if r.unicode_char != 0 {
-		e.rune = rune(r.unicode_char)
+		e.Rune = rune(r.unicode_char)
 		return e, true
 	}
 
 	return e, false
 }
 
-func produceEvent(event keyEvent) bool {
+func produceEvent(event KeyEvent) bool {
 	select {
 	case <-quit:
 		return false
@@ -228,7 +228,7 @@ func inputEventsProducer() {
 		// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitformultipleobjects
 		r0, _, e1 := syscall.Syscall6(k32_WaitForMultipleObjects.Addr(), 4,
 			uintptr(2), uintptr(unsafe.Pointer(&hConsoleIn)), 0, windows.INFINITE, 0, 0)
-		if uint32(r0) == windows.WAIT_FAILED && false == produceEvent(keyEvent{err: getError(e1)}) {
+		if uint32(r0) == windows.WAIT_FAILED && false == produceEvent(KeyEvent{Err: getError(e1)}) {
 			return
 		}
 		select {
@@ -241,7 +241,7 @@ func inputEventsProducer() {
 		r0, _, e1 = syscall.Syscall6(k32_ReadConsoleInputW.Addr(), 4,
 			uintptr(hConsoleIn), uintptr(unsafe.Pointer(&input[0])), 1, uintptr(unsafe.Pointer(&tmpArg)), 0, 0)
 		if int(r0) == 0 {
-			if false == produceEvent(keyEvent{err: getError(e1)}) {
+			if false == produceEvent(KeyEvent{Err: getError(e1)}) {
 				return
 			}
 		} else if input[0] == k32_keyEvent {

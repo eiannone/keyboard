@@ -37,12 +37,12 @@ var (
 	input_buf   = make(chan input_event)
 )
 
-func parse_escape_sequence(buf []byte) (size int, event keyEvent) {
+func parse_escape_sequence(buf []byte) (size int, event KeyEvent) {
 	bufstr := string(buf)
 	for i, key := range keys {
 		if strings.HasPrefix(bufstr, key) {
-			event.rune = 0
-			event.key = Key(0xFFFF - i)
+			event.Rune = 0
+			event.Key = Key(0xFFFF - i)
 			size = len(key)
 			return
 		}
@@ -50,14 +50,14 @@ func parse_escape_sequence(buf []byte) (size int, event keyEvent) {
 	return 0, event
 }
 
-func extract_event(inbuf []byte) (int, keyEvent) {
+func extract_event(inbuf []byte) (int, KeyEvent) {
 	if len(inbuf) == 0 {
-		return 0, keyEvent{}
+		return 0, KeyEvent{}
 	}
 
 	if inbuf[0] == '\033' {
 		if len(inbuf) == 1 {
-			return 1, keyEvent{key: KeyEsc}
+			return 1, KeyEvent{Key: KeyEsc}
 		}
 		// possible escape sequence
 		if size, event := parse_escape_sequence(inbuf); size != 0 {
@@ -67,7 +67,7 @@ func extract_event(inbuf []byte) (int, keyEvent) {
 			i := 1 // check for multiple sequences in the buffer
 			for ; i < len(inbuf) || inbuf[i] != '\033'; i++ {
 			}
-			return i, keyEvent{key: KeyEsc, err: errors.New("Unrecognized escape sequence")}
+			return i, KeyEvent{Key: KeyEsc, Err: errors.New("Unrecognized escape sequence")}
 		}
 	}
 
@@ -76,15 +76,15 @@ func extract_event(inbuf []byte) (int, keyEvent) {
 
 	// first of all check if it's a functional key
 	if Key(inbuf[0]) <= KeySpace || Key(inbuf[0]) == KeyBackspace2 {
-		return 1, keyEvent{key: Key(inbuf[0])}
+		return 1, KeyEvent{Key: Key(inbuf[0])}
 	}
 
 	// the only possible option is utf8 rune
 	if r, n := utf8.DecodeRune(inbuf); r != utf8.RuneError {
-		return n, keyEvent{rune: r}
+		return n, KeyEvent{Rune: r}
 	}
 
-	return 0, keyEvent{}
+	return 0, KeyEvent{}
 }
 
 // Wait for an event and return it. This is a blocking function call.
@@ -98,7 +98,7 @@ func inputEventsProducer() {
 				select {
 				case <-quitEvProd:
 					return
-				case inputComm <- keyEvent{err: ev.err}:
+				case inputComm <- KeyEvent{Err: ev.err}:
 				}
 				break
 			}

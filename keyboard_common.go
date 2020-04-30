@@ -8,10 +8,10 @@ import (
 type (
 	Key uint16
 
-	keyEvent struct {
-		key  Key   // One of Key* constants, invalid if 'Ch' is not 0
-		rune rune  // A unicode character
-		err  error // Error in case if input failed
+	KeyEvent struct {
+		Key  Key   // One of Key* constants, invalid if 'Ch' is not 0
+		Rune rune  // A unicode character
+		Err  error // Error in case if input failed
 	}
 )
 
@@ -92,11 +92,12 @@ const (
 )
 
 var (
+	inputComm chan KeyEvent
+
 	ping          = make(chan bool)
 	doneClosing   = make(chan bool, 1)
 	busy          = make(chan bool)
 	waitingForKey = make(chan bool)
-	inputComm     = make(chan keyEvent, 10)
 )
 
 func IsStarted(timeout time.Duration) bool {
@@ -108,13 +109,16 @@ func IsStarted(timeout time.Duration) bool {
 	}
 }
 
-func Open() (err error) {
+func GetKeys(bufferSize int) (<-chan KeyEvent, error) {
 	if IsStarted(time.Millisecond * 1) {
-		return
+		if cap(inputComm) == bufferSize {
+			return inputComm, nil
+		}
+		return nil, errors.New("channel already started with a different capacity")
 	}
 	select {
 	case busy <- true:
-		return errors.New("cannot open keyboard because program is busy")
+		return nil, errors.New("cannot open keyboard because program is busy")
 	default:
 	}
 	// Signal busy operation
@@ -122,23 +126,34 @@ func Open() (err error) {
 		for <-busy {
 		} // Close the routine when busy is false
 	}()
-	err = initConsole()
+
+	inputComm = make(chan KeyEvent, bufferSize)
+	err := initConsole()
 	if err != nil {
+		close(inputComm)
 		busy <- false
-		return
+		return nil, err
 	}
-	// Signal open subroutine started (respond to ping)
+
+	// Signal ping subroutine started
 	go func() {
 		defer func() {
 			releaseConsole()
+			close(inputComm)
 			doneClosing <- true
 		}()
 		for <-ping {
 		} // Close the routine when ping is false
 	}()
 	busy <- false
-	// Wait for ping subroutine
+	// Wait for ping subroutine to start
 	ping <- true
+
+	return inputComm, nil
+}
+
+func Open() (err error) {
+	_, err = GetKeys(10)
 	return
 }
 
@@ -193,7 +208,7 @@ func GetKey() (rune, Key, error) {
 	for {
 		select {
 		case ev := <-inputComm:
-			return ev.rune, ev.key, ev.err
+			return ev.Rune, ev.Key, ev.Err
 
 		case keepAlive := <-waitingForKey:
 			if !keepAlive {
