@@ -1,6 +1,9 @@
 package keyboard
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 type (
 	Key uint16
@@ -90,16 +93,26 @@ const (
 
 var (
 	ping          = make(chan bool)
+	doneClosing   = make(chan bool, 1)
 	busy          = make(chan bool)
 	waitingForKey = make(chan bool)
 	inputComm     = make(chan keyEvent, 10)
 )
 
-func Open() (err error) {
-	// Check if already started
+func IsStarted(timeout time.Duration) bool {
 	select {
 	case ping <- true:
-		return // Already opened
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+func Open() (err error) {
+	if IsStarted(time.Millisecond * 1) {
+		return
+	}
+	select {
 	case busy <- true:
 		return errors.New("cannot open keyboard because program is busy")
 	default:
@@ -114,8 +127,12 @@ func Open() (err error) {
 		busy <- false
 		return
 	}
-	// Signal keyboard open (respond to ping)
+	// Signal open subroutine started (respond to ping)
 	go func() {
+		defer func() {
+			releaseConsole()
+			doneClosing <- true
+		}()
 		for <-ping {
 		} // Close the routine when ping is false
 	}()
@@ -126,15 +143,16 @@ func Open() (err error) {
 }
 
 // Should be called after successful initialization when functionality isn't required anymore.
-func Close() error {
-	// Check if opened
+func Close() (err error) {
+	// Checks if already closing
 	select {
-	case ping <- true:
-		break
 	case busy <- true:
 		return errors.New("cannot close keyboard because program is busy")
 	default:
-		return nil // already closed
+	}
+	// Checks if already closed
+	if !IsStarted(time.Millisecond * 1) {
+		return
 	}
 
 	// Signal busy operation
@@ -143,7 +161,7 @@ func Close() error {
 		} // Close the routine when busy is false
 	}()
 
-	// Stop responding to ping
+	// Stop responding to ping and closes initial subroutine
 	ping <- false
 
 	// Cancel GetKey() operations
@@ -153,19 +171,16 @@ func Close() error {
 	default:
 	}
 
-	// Release the console
-	releaseConsole()
+	// Wait for closing finished
+	<-doneClosing
 
 	busy <- false
-	return nil
+	return
 }
 
 func GetKey() (rune, Key, error) {
 	// Check if opened
-	select {
-	case ping <- true:
-		break
-	default:
+	if !IsStarted(time.Millisecond * 50) {
 		return 0, 0, errors.New("keyboard not opened")
 	}
 	// Check if already waiting for key
