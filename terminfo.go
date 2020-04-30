@@ -145,7 +145,10 @@ func setup_term_builtin() error {
 		keys    []string
 	}{
 		{"xterm", xterm_keys},
+		{"xterm-256color", xterm_keys},
 		{"rxvt", rxvt_keys},
+		{"rxvt-unicode", rxvt_keys},
+		{"rxvt-256color", rxvt_keys},
 		{"linux", linux_keys},
 		{"Eterm", eterm_keys},
 		{"screen", screen_keys},
@@ -183,6 +186,10 @@ func setup_term() (err error) {
 	err = binary.Read(rd, binary.LittleEndian, header[:])
 	if err != nil {
 		return
+	}
+
+	if header[0] != 542 && header[0] != 282 {
+		return setup_term_builtin()
 	}
 
 	number_sec_len := int16(2)
