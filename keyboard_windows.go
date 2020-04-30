@@ -70,8 +70,7 @@ var (
 	hConsoleIn syscall.Handle
 	hInterrupt windows.Handle
 
-	cancel_comm      = make(chan bool, 1)
-	cancel_done_comm = make(chan bool)
+	quit = make(chan bool)
 
 	// This is just to prevent heap allocs at all costs
 	tmpArg dword
@@ -213,19 +212,27 @@ func getKeyEvent(r *k32_event) (keyEvent, bool) {
 	return e, false
 }
 
+func produceEvent(event keyEvent) bool {
+	select {
+	case <-quit:
+		return false
+	case inputComm <- event:
+		return true
+	}
+}
+
 func inputEventsProducer() {
 	var input [20]uint16
 	for {
 		// Wait for events
+		// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitformultipleobjects
 		r0, _, e1 := syscall.Syscall6(k32_WaitForMultipleObjects.Addr(), 4,
 			uintptr(2), uintptr(unsafe.Pointer(&hConsoleIn)), 0, windows.INFINITE, 0, 0)
-		if uint32(r0) == windows.WAIT_FAILED {
-			input_comm <- keyEvent{err: getError(e1)}
+		if uint32(r0) == windows.WAIT_FAILED && false == produceEvent(keyEvent{err: getError(e1)}) {
+			return
 		}
-
 		select {
-		case <-cancel_comm:
-			cancel_done_comm <- true
+		case <-quit:
 			return
 		default:
 		}
@@ -234,10 +241,10 @@ func inputEventsProducer() {
 		r0, _, e1 = syscall.Syscall6(k32_ReadConsoleInputW.Addr(), 4,
 			uintptr(hConsoleIn), uintptr(unsafe.Pointer(&input[0])), 1, uintptr(unsafe.Pointer(&tmpArg)), 0, 0)
 		if int(r0) == 0 {
-			input_comm <- keyEvent{err: getError(e1)}
-		}
-
-		if input[0] == k32_keyEvent {
+			if false == produceEvent(keyEvent{err: getError(e1)}) {
+				return
+			}
+		} else if input[0] == k32_keyEvent {
 			kEvent := (*k32_event)(unsafe.Pointer(&input[2]))
 			ev, ok := getKeyEvent(kEvent)
 			if ok {
@@ -248,6 +255,8 @@ func inputEventsProducer() {
 						return
 					case input_comm <- ev:
 						break
+					if false == produceEvent(ev) {
+						return
 					}
 				}
 			}
@@ -274,9 +283,8 @@ func initConsole() (err error) {
 
 func releaseConsole() {
 	// Stop events producer
-	cancel_comm <- true
 	windows.SetEvent(hInterrupt)
-	<-cancel_done_comm
+	quit <- true
 
 	syscall.Close(hConsoleIn)
 	windows.Close(hInterrupt)

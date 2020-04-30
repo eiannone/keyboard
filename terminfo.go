@@ -1,5 +1,8 @@
 // +build !windows
 
+// This file is imported from https://github.com/nsf/termbox-go
+// Last update: 2020-04-30
+
 // This file contains a simple and incomplete implementation of the terminfo
 // database. Information was taken from the ncurses manpages term(5) and
 // terminfo(5). Currently, only the string capabilities for special keys and for
@@ -61,7 +64,7 @@ func load_terminfo() ([]byte, error) {
 
 	term := os.Getenv("TERM")
 	if term == "" {
-		return nil, errors.New("termbox: TERM not set")
+		return nil, errors.New("terminfo: TERM not set")
 	}
 
 	// The following behaviour follows the one described in terminfo(5) as
@@ -97,6 +100,12 @@ func load_terminfo() ([]byte, error) {
 		}
 	}
 
+	// next, /lib/terminfo
+	data, err = ti_try_path("/lib/terminfo")
+	if err == nil {
+		return data, nil
+	}
+
 	// fall back to /usr/share/terminfo
 	return ti_try_path("/usr/share/terminfo")
 }
@@ -121,7 +130,7 @@ func ti_try_path(path string) (data []byte, err error) {
 func setup_term_builtin() error {
 	name := os.Getenv("TERM")
 	if name == "" {
-		return errors.New("termbox: TERM environment variable not set")
+		return errors.New("terminfo: TERM environment variable not set")
 	}
 
 	for _, t := range terms {
@@ -159,6 +168,48 @@ func setup_term_builtin() error {
 	return errors.New("termbox: unsupported terminal")
 }
 
+func setup_term() (err error) {
+	var data []byte
+	var header [6]int16
+	var str_offset, table_offset int16
+
+	data, err = load_terminfo()
+	if err != nil {
+		return setup_term_builtin()
+	}
+
+	rd := bytes.NewReader(data)
+	// 0: magic number, 1: size of names section, 2: size of boolean section, 3:
+	// size of numbers section (in integers), 4: size of the strings section (in
+	// integers), 5: size of the string table
+
+	err = binary.Read(rd, binary.LittleEndian, header[:])
+	if err != nil {
+		return
+	}
+
+	number_sec_len := int16(2)
+	if header[0] == 542 { // doc says it should be octal 0542, but what I see it terminfo files is 542, learn to program please... thank you..
+		number_sec_len = 4
+	}
+
+	if (header[1]+header[2])%2 != 0 {
+		// old quirk to align everything on word boundaries
+		header[2] += 1
+	}
+	str_offset = ti_header_length + header[1] + header[2] + number_sec_len*header[3]
+	table_offset = str_offset + 2*header[4]
+
+	keys = make([]string, 0xFFFF-key_min)
+	for i := range keys {
+		keys[i], err = ti_read_string(rd, str_offset+2*ti_keys[i], table_offset)
+		if err != nil {
+			return
+		}
+	}
+	return nil
+}
+
 func ti_read_string(rd *bytes.Reader, str_off, table int16) (string, error) {
 	var off int16
 
@@ -188,54 +239,9 @@ func ti_read_string(rd *bytes.Reader, str_off, table int16) (string, error) {
 	return string(bs), nil
 }
 
-func setup_term() (err error) {
-	var data []byte
-	var header [6]int16
-	var str_offset, table_offset int16
-
-	data, err = load_terminfo()
-	if err != nil {
-		return setup_term_builtin()
-	}
-
-	rd := bytes.NewReader(data)
-	// 0: magic number, 1: size of names section, 2: size of boolean section, 3:
-	// size of numbers section (in integers), 4: size of the strings section (in
-	// integers), 5: size of the string table
-
-	err = binary.Read(rd, binary.LittleEndian, header[:])
-	if err != nil {
-		return
-	}
-
-	if header[0] != 542 && header[0] != 282 {
-		return setup_term_builtin()
-	}
-
-	number_sec_len := int16(2)
-	if header[0] == 542 {
-		number_sec_len = 4
-	}
-	if (header[1]+header[2])%2 != 0 {
-		// old quirk to align everything on word boundaries
-		header[2] += 1
-	}
-	str_offset = ti_header_length + header[1] + header[2] + number_sec_len*header[3]
-	table_offset = str_offset + 2*header[4]
-
-	// "Maps" the special keys constants from termbox.go to the number of the respective
-	// string capability in the terminfo file. Taken from (ncurses) term.h.
-	ti_keys := []int16{
-		66, 68 /* apparently not a typo; 67 is F10 for whatever reason */, 69, 70,
-		71, 72, 73, 74, 75, 67, 216, 217, 77, 59, 76, 164, 82, 81, 87, 61, 79, 83,
-	}
-
-	keys = make([]string, 0xFFFF-key_min)
-	for i := range keys {
-		keys[i], err = ti_read_string(rd, str_offset+2*ti_keys[i], table_offset)
-		if err != nil {
-			return
-		}
-	}
-	return nil
+// "Maps" special keys constants from termbox.go to the number of the respective
+// string capability in the terminfo file. Taken from (ncurses) term.h.
+var ti_keys = []int16{
+	66, 68 /* apparently not a typo; 67 is F10 for whatever reason */, 69, 70,
+	71, 72, 73, 74, 75, 67, 216, 217, 77, 59, 76, 164, 82, 81, 87, 61, 79, 83,
 }

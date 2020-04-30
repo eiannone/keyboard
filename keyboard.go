@@ -3,16 +3,14 @@
 package keyboard
 
 import (
-	"fmt"
+	"errors"
+	"golang.org/x/sys/unix"
 	"os"
 	"os/signal"
 	"runtime"
 	"strings"
 	"syscall"
 	"unicode/utf8"
-	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 type (
@@ -32,28 +30,12 @@ var (
 	// termbox inner state
 	orig_tios unix.Termios
 
-	sigio     = make(chan os.Signal, 1)
-	quit      = make(chan int)
-	inbuf     = make([]byte, 0, 128)
-	input_buf = make(chan input_event)
+	sigio       = make(chan os.Signal, 1)
+	quitEvProd  = make(chan bool)
+	quitConsole = make(chan bool)
+	inbuf       = make([]byte, 0, 128)
+	input_buf   = make(chan input_event)
 )
-
-func fcntl(cmd int, arg int) error {
-	_, _, e := syscall.Syscall(unix.SYS_FCNTL, uintptr(in), uintptr(cmd), uintptr(arg))
-	if e != 0 {
-		return e
-	}
-
-	return nil
-}
-
-func ioctl(cmd int, termios *unix.Termios) error {
-	r, _, e := syscall.Syscall(unix.SYS_IOCTL, out.Fd(), uintptr(cmd), uintptr(unsafe.Pointer(termios)))
-	if r != 0 {
-		return os.NewSyscallError("SYS_IOCTL", e)
-	}
-	return nil
-}
 
 func parse_escape_sequence(buf []byte) (size int, event keyEvent) {
 	bufstr := string(buf)
@@ -68,21 +50,25 @@ func parse_escape_sequence(buf []byte) (size int, event keyEvent) {
 	return 0, event
 }
 
-func extract_event(inbuf []byte) int {
+func extract_event(inbuf []byte) (int, keyEvent) {
 	if len(inbuf) == 0 {
-		return 0
+		return 0, keyEvent{}
 	}
 
 	if inbuf[0] == '\033' {
+		if len(inbuf) == 1 {
+			return 1, keyEvent{key: KeyEsc}
+		}
 		// possible escape sequence
 		if size, event := parse_escape_sequence(inbuf); size != 0 {
-			input_comm <- event
-			return size
+			return size, event
+		} else {
+			// it's not a recognized escape sequence, return error
+			i := 1 // check for multiple sequences in the buffer
+			for ; i < len(inbuf) || inbuf[i] != '\033'; i++ {
+			}
+			return i, keyEvent{key: KeyEsc, err: errors.New("Unrecognized escape sequence")}
 		}
-
-		// it's not a recognized escape sequence, then return Esc
-		input_comm <- keyEvent{key: KeyEsc}
-		return len(inbuf)
 	}
 
 	// if we're here, this is not an escape sequence and not an alt sequence
@@ -90,44 +76,48 @@ func extract_event(inbuf []byte) int {
 
 	// first of all check if it's a functional key
 	if Key(inbuf[0]) <= KeySpace || Key(inbuf[0]) == KeyBackspace2 {
-		input_comm <- keyEvent{key: Key(inbuf[0])}
-		return 1
+		return 1, keyEvent{key: Key(inbuf[0])}
 	}
 
 	// the only possible option is utf8 rune
 	if r, n := utf8.DecodeRune(inbuf); r != utf8.RuneError {
-		input_comm <- keyEvent{rune: r}
-		return n
+		return n, keyEvent{rune: r}
 	}
 
-	return 0
+	return 0, keyEvent{}
 }
 
 // Wait for an event and return it. This is a blocking function call.
 func inputEventsProducer() {
-	// try to extract event from input buffer, return on success
-	size := extract_event(inbuf)
-	if size != 0 {
-		copy(inbuf, inbuf[size:])
-		inbuf = inbuf[:len(inbuf)-size]
-	}
-
 	for {
 		select {
+		case <-quitEvProd:
+			return
 		case ev := <-input_buf:
 			if ev.err != nil {
-				input_comm <- keyEvent{err: ev.err}
-				return
+				select {
+				case <-quitEvProd:
+					return
+				case inputComm <- keyEvent{err: ev.err}:
+				}
+				break
 			}
-
 			inbuf = append(inbuf, ev.data...)
-			size = extract_event(inbuf)
-			if size != 0 {
-				copy(inbuf, inbuf[size:])
-				inbuf = inbuf[:len(inbuf)-size]
+			for {
+				size, event := extract_event(inbuf)
+				if size > 0 {
+					select {
+					case <-quitEvProd:
+						return
+					case inputComm <- event:
+					}
+					copy(inbuf, inbuf[size:])
+					inbuf = inbuf[:len(inbuf)-size]
+				}
+				if size == 0 || len(inbuf) == 0 {
+					break
+				}
 			}
-		case <-quit:
-			return
 		}
 	}
 }
@@ -144,22 +134,20 @@ func initConsole() (err error) {
 
 	err = setup_term()
 	if err != nil {
-		return fmt.Errorf("Error while reading terminfo data: %v", err)
+		return errors.New("Error while reading terminfo data:" + err.Error())
 	}
 
 	signal.Notify(sigio, unix.SIGIO)
 
-	err = fcntl(unix.F_SETFL, unix.O_ASYNC|unix.O_NONBLOCK)
-	if err != nil {
+	if _, err = unix.FcntlInt(uintptr(in), unix.F_SETFL, unix.O_ASYNC|unix.O_NONBLOCK); err != nil {
 		return
 	}
-	err = fcntl(unix.F_SETOWN, unix.Getpid())
+	_, err = unix.FcntlInt(uintptr(in), unix.F_SETOWN, unix.Getpid())
 	if runtime.GOOS != "darwin" && err != nil {
 		return
 	}
 
-	err = ioctl(ioctl_GETATTR, &orig_tios)
-	if err != nil {
+	if err = unix.IoctlSetTermios(int(out.Fd()), ioctl_GETATTR, &orig_tios); err != nil {
 		return
 	}
 
@@ -174,33 +162,34 @@ func initConsole() (err error) {
 	tios.Cc[unix.VMIN] = 1
 	tios.Cc[unix.VTIME] = 0
 
-	err = ioctl(ioctl_SETATTR, &tios)
-	if err != nil {
-		return err
+	if err = unix.IoctlSetTermios(int(out.Fd()), ioctl_SETATTR, &tios); err != nil {
+		return
 	}
 
 	go func() {
 		buf := make([]byte, 128)
 		for {
 			select {
+			case <-quitConsole:
+				return
 			case <-sigio:
 				for {
-					n, err := syscall.Read(in, buf)
+					bytesRead, err := syscall.Read(in, buf)
 					if err == unix.EAGAIN || err == unix.EWOULDBLOCK {
 						break
 					}
 					if err != nil {
-						n = 0
+						bytesRead = 0
 					}
+					data := make([]byte, bytesRead)
+					copy(data, buf)
 					select {
-					case input_buf <- input_event{buf[:n], err}:
-						continue
-					case <-quit:
+					case <-quitConsole:
 						return
+					case input_buf <- input_event{data, err}:
+						continue
 					}
 				}
-			case <-quit:
-				return
 			}
 		}
 	}()
@@ -210,8 +199,9 @@ func initConsole() (err error) {
 }
 
 func releaseConsole() {
-	quit <- 1
-	ioctl(ioctl_SETATTR, &orig_tios)
+	quitConsole <- true
+	quitEvProd <- true
+	unix.IoctlSetTermios(int(out.Fd()), ioctl_SETATTR, &orig_tios)
 	out.Close()
 	unix.Close(in)
 }

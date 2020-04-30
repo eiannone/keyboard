@@ -1,5 +1,10 @@
 package keyboard
 
+import (
+	"errors"
+	"time"
+)
+
 type (
 	Key uint16
 
@@ -87,49 +92,114 @@ const (
 )
 
 var (
-	isOpen        bool = false
-	waitingForKey bool = false
-
-	input_comm = make(chan keyEvent)
-	cancel_key = make(chan struct{})
+	ping          = make(chan bool)
+	doneClosing   = make(chan bool, 1)
+	busy          = make(chan bool)
+	waitingForKey = make(chan bool)
+	inputComm     = make(chan keyEvent, 10)
 )
 
+func IsStarted(timeout time.Duration) bool {
+	select {
+	case ping <- true:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
 func Open() (err error) {
-	if isOpen {
+	if IsStarted(time.Millisecond * 1) {
 		return
 	}
-	err = initConsole()
-	if err == nil {
-		isOpen = true
+	select {
+	case busy <- true:
+		return errors.New("cannot open keyboard because program is busy")
+	default:
 	}
+	// Signal busy operation
+	go func() {
+		for <-busy {
+		} // Close the routine when busy is false
+	}()
+	err = initConsole()
+	if err != nil {
+		busy <- false
+		return
+	}
+	// Signal open subroutine started (respond to ping)
+	go func() {
+		defer func() {
+			releaseConsole()
+			doneClosing <- true
+		}()
+		for <-ping {
+		} // Close the routine when ping is false
+	}()
+	busy <- false
+	// Wait for ping subroutine
+	ping <- true
 	return
 }
 
 // Should be called after successful initialization when functionality isn't required anymore.
-func Close() {
-	if !isOpen {
+func Close() (err error) {
+	// Checks if already closing
+	select {
+	case busy <- true:
+		return errors.New("cannot close keyboard because program is busy")
+	default:
+	}
+	// Checks if already closed
+	if !IsStarted(time.Millisecond * 1) {
 		return
 	}
-	if waitingForKey {
-		cancel_key <- struct{}{}
+
+	// Signal busy operation
+	go func() {
+		for <-busy {
+		} // Close the routine when busy is false
+	}()
+
+	// Stop responding to ping and closes initial subroutine
+	ping <- false
+
+	// Cancel GetKey() operations
+	select {
+	case waitingForKey <- false:
+		break
+	default:
 	}
-	releaseConsole()
-	isOpen = false
+
+	// Wait for closing finished
+	<-doneClosing
+
+	busy <- false
+	return
 }
 
 func GetKey() (rune, Key, error) {
-	if !isOpen {
-		panic("function GetKey() should be called after Open()")
+	// Check if opened
+	if !IsStarted(time.Millisecond * 50) {
+		return 0, 0, errors.New("keyboard not opened")
 	}
-	waitingForKey = true
-	defer func() { waitingForKey = false }()
-
+	// Check if already waiting for key
 	select {
-	case ev := <-input_comm:
-		return ev.rune, ev.key, ev.err
+	case waitingForKey <- true:
+		return 0, 0, errors.New("already waiting for key")
+	default:
+	}
 
-	case <-cancel_key:
-		return 0, 0, nil
+	for {
+		select {
+		case ev := <-inputComm:
+			return ev.rune, ev.key, ev.err
+
+		case keepAlive := <-waitingForKey:
+			if !keepAlive {
+				return 0, 0, errors.New("operation canceled")
+			}
+		}
 	}
 }
 
@@ -137,7 +207,10 @@ func GetSingleKey() (ch rune, key Key, err error) {
 	err = Open()
 	if err == nil {
 		ch, key, err = GetKey()
-		Close()
+		errClosing := Close()
+		if err == nil {
+			err = errClosing
+		}
 	}
 	return
 }
