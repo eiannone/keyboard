@@ -1,4 +1,8 @@
 // +build !windows
+
+// This file is imported from https://github.com/nsf/termbox-go
+// Last update: 2020-04-30
+
 // This file contains a simple and incomplete implementation of the terminfo
 // database. Information was taken from the ncurses manpages term(5) and
 // terminfo(5). Currently, only the string capabilities for special keys and for
@@ -96,6 +100,12 @@ func load_terminfo() ([]byte, error) {
 		}
 	}
 
+	// next, /lib/terminfo
+	data, err = ti_try_path("/lib/terminfo")
+	if err == nil {
+		return data, nil
+	}
+
 	// fall back to /usr/share/terminfo
 	return ti_try_path("/usr/share/terminfo")
 }
@@ -120,7 +130,7 @@ func ti_try_path(path string) (data []byte, err error) {
 func setup_term_builtin() error {
 	name := os.Getenv("TERM")
 	if name == "" {
-		return errors.New("termbox: TERM environment variable not set")
+		return errors.New("terminfo: TERM environment variable not set")
 	}
 
 	for _, t := range terms {
@@ -175,11 +185,16 @@ func setup_term() (err error) {
 		return
 	}
 
+	number_sec_len := int16(2)
+	if header[0] == 542 { // doc says it should be octal 0542, but what I see it terminfo files is 542, learn to program please... thank you..
+		number_sec_len = 4
+	}
+
 	if (header[1]+header[2])%2 != 0 {
 		// old quirk to align everything on word boundaries
 		header[2] += 1
 	}
-	str_offset = ti_header_length + header[1] + header[2] + 2*header[3]
+	str_offset = ti_header_length + header[1] + header[2] + number_sec_len*header[3]
 	table_offset = str_offset + 2*header[4]
 
 	keys = make([]string, 0xFFFF-key_min)
