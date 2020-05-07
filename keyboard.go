@@ -65,7 +65,7 @@ func extract_event(inbuf []byte) (int, KeyEvent) {
 		} else {
 			// it's not a recognized escape sequence, return error
 			i := 1 // check for multiple sequences in the buffer
-			for ; i < len(inbuf) || inbuf[i] != '\033'; i++ {
+			for ; i < len(inbuf) && inbuf[i] != '\033'; i++ {
 			}
 			return i, KeyEvent{Key: KeyEsc, Err: errors.New("Unrecognized escape sequence")}
 		}
