@@ -66,6 +66,12 @@ func load_terminfo() ([]byte, error) {
 	if term == "" {
 		return nil, errors.New("terminfo: TERM not set")
 	}
+	// Check if is a builtin terminal
+	for _, t := range terms {
+		if t.name == term {
+			return nil, errors.New("use built in!")
+		}
+	}
 
 	// The following behaviour follows the one described in terminfo(5) as
 	// distributed by ncurses.
