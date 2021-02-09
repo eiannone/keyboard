@@ -4,13 +4,14 @@ package keyboard
 
 import (
 	"errors"
-	"golang.org/x/sys/unix"
 	"os"
 	"os/signal"
 	"runtime"
 	"strings"
 	"syscall"
 	"unicode/utf8"
+
+	"golang.org/x/sys/unix"
 )
 
 type (
@@ -46,6 +47,14 @@ func parse_escape_sequence(buf []byte) (size int, event KeyEvent) {
 			size = len(key)
 			return
 		}
+	}
+
+	// Might be an Alt combo in format of ESC+letter
+	if buf[0] == '\033' {
+		event.Key = KeyEsc
+		event.Rune, size = utf8.DecodeRune(buf[1:])
+		size = len(buf)
+		return
 	}
 	return 0, event
 }
