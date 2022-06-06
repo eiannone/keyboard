@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package keyboard
@@ -9,7 +10,6 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
-	"syscall"
 	"unicode/utf8"
 )
 
@@ -127,7 +127,7 @@ func initConsole() (err error) {
 	if err != nil {
 		return
 	}
-	in, err = syscall.Open("/dev/tty", unix.O_RDONLY, 0)
+	in, err = unix.Open("/dev/tty", unix.O_RDONLY, 0)
 	if err != nil {
 		return
 	}
@@ -174,7 +174,7 @@ func initConsole() (err error) {
 				return
 			case <-sigio:
 				for {
-					bytesRead, err := syscall.Read(in, buf)
+					bytesRead, err := unix.Read(in, buf)
 					if err == unix.EAGAIN || err == unix.EWOULDBLOCK {
 						break
 					}

@@ -62,12 +62,12 @@ type (
 )
 
 var (
-	kernel32 = syscall.NewLazyDLL("kernel32.dll")
+	kernel32 = windows.NewLazyDLL("kernel32.dll")
 
 	k32_WaitForMultipleObjects = kernel32.NewProc("WaitForMultipleObjects")
 	k32_ReadConsoleInputW      = kernel32.NewProc("ReadConsoleInputW")
 
-	hConsoleIn syscall.Handle
+	hConsoleIn windows.Handle
 	hInterrupt windows.Handle
 
 	quit = make(chan bool)
@@ -76,7 +76,7 @@ var (
 	tmpArg dword
 )
 
-func getError(errno syscall.Errno) error {
+func getError(errno windows.Errno) error {
 	if errno != 0 {
 		return error(errno)
 	} else {
@@ -226,9 +226,9 @@ func inputEventsProducer() {
 	for {
 		// Wait for events
 		// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitformultipleobjects
-		r0, _, e1 := syscall.Syscall6(k32_WaitForMultipleObjects.Addr(), 4,
+		r0, _, e1 := syscall.SyscallN(k32_WaitForMultipleObjects.Addr(), 4,
 			uintptr(2), uintptr(unsafe.Pointer(&hConsoleIn)), 0, windows.INFINITE, 0, 0)
-		if uint32(r0) == windows.WAIT_FAILED && false == produceEvent(KeyEvent{Err: getError(e1)}) {
+		if uint32(r0) == windows.WAIT_FAILED && !produceEvent(KeyEvent{Err: getError(e1)}) {
 			return
 		}
 		select {
@@ -238,10 +238,10 @@ func inputEventsProducer() {
 		}
 
 		// Get console input
-		r0, _, e1 = syscall.Syscall6(k32_ReadConsoleInputW.Addr(), 4,
+		r0, _, e1 = syscall.SyscallN(k32_ReadConsoleInputW.Addr(), 4,
 			uintptr(hConsoleIn), uintptr(unsafe.Pointer(&input[0])), 1, uintptr(unsafe.Pointer(&tmpArg)), 0, 0)
 		if int(r0) == 0 {
-			if false == produceEvent(KeyEvent{Err: getError(e1)}) {
+			if !produceEvent(KeyEvent{Err: getError(e1)}) {
 				return
 			}
 		} else if input[0] == k32_keyEvent {
@@ -249,7 +249,7 @@ func inputEventsProducer() {
 			ev, ok := getKeyEvent(kEvent)
 			if ok {
 				for i := 0; i < int(kEvent.repeat_count); i++ {
-					if false == produceEvent(ev) {
+					if !produceEvent(ev) {
 						return
 					}
 				}
@@ -265,7 +265,7 @@ func initConsole() (err error) {
 		return err
 	}
 
-	hConsoleIn, err = syscall.Open("CONIN$", windows.O_RDWR, 0)
+	hConsoleIn, err = windows.Open("CONIN$", windows.O_RDWR, 0)
 	if err != nil {
 		windows.Close(hInterrupt)
 		return
@@ -280,6 +280,6 @@ func releaseConsole() {
 	windows.SetEvent(hInterrupt)
 	quit <- true
 
-	syscall.Close(hConsoleIn)
+	windows.Close(hConsoleIn)
 	windows.Close(hInterrupt)
 }

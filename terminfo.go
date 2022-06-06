@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 // This file is imported from https://github.com/nsf/termbox-go
