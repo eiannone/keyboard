@@ -1,7 +1,6 @@
 package keyboard
 
 import (
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -64,25 +63,13 @@ type (
 var (
 	kernel32 = windows.NewLazyDLL("kernel32.dll")
 
-	k32_WaitForMultipleObjects = kernel32.NewProc("WaitForMultipleObjects")
-	k32_ReadConsoleInputW      = kernel32.NewProc("ReadConsoleInputW")
+	k32_ReadConsoleInputW = kernel32.NewProc("ReadConsoleInputW")
 
 	hConsoleIn windows.Handle
 	hInterrupt windows.Handle
 
 	quit = make(chan bool)
-
-	// This is just to prevent heap allocs at all costs
-	tmpArg dword
 )
-
-func getError(errno windows.Errno) error {
-	if errno != 0 {
-		return error(errno)
-	} else {
-		return syscall.EINVAL
-	}
-}
 
 func getKeyEvent(r *k32_event) (KeyEvent, bool) {
 	e := KeyEvent{}
@@ -222,13 +209,15 @@ func produceEvent(event KeyEvent) bool {
 }
 
 func inputEventsProducer() {
-	var input [20]uint16
+	var (
+		input              [20]uint16
+		numberOfEventsRead dword // this won't cause heap allocation
+	)
 	for {
-		// Wait for events
-		// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitformultipleobjects
-		r0, _, e1 := syscall.SyscallN(k32_WaitForMultipleObjects.Addr(), 4,
-			uintptr(2), uintptr(unsafe.Pointer(&hConsoleIn)), 0, windows.INFINITE, 0, 0)
-		if uint32(r0) == windows.WAIT_FAILED && !produceEvent(KeyEvent{Err: getError(e1)}) {
+		// Wait for a single event
+		// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject
+		event, err := windows.WaitForSingleObject(hConsoleIn, uint32(windows.INFINITE))
+		if event == windows.WAIT_FAILED && !produceEvent(KeyEvent{Err: err}) {
 			return
 		}
 		select {
@@ -238,10 +227,9 @@ func inputEventsProducer() {
 		}
 
 		// Get console input
-		r0, _, e1 = syscall.SyscallN(k32_ReadConsoleInputW.Addr(), 4,
-			uintptr(hConsoleIn), uintptr(unsafe.Pointer(&input[0])), 1, uintptr(unsafe.Pointer(&tmpArg)), 0, 0)
+		r0, _, err := k32_ReadConsoleInputW.Call(uintptr(hConsoleIn), uintptr(unsafe.Pointer(&input[0])), 1, uintptr(unsafe.Pointer(&numberOfEventsRead)))
 		if int(r0) == 0 {
-			if !produceEvent(KeyEvent{Err: getError(e1)}) {
+			if !produceEvent(KeyEvent{Err: err}) {
 				return
 			}
 		} else if input[0] == k32_keyEvent {
