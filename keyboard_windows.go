@@ -43,6 +43,9 @@ const (
 	shift_pressed      = 0x10
 
 	k32_keyEvent = 0x1
+
+	ConsoleIn = 0
+	Interrupt = 1
 )
 
 type (
@@ -65,8 +68,9 @@ var (
 
 	k32_ReadConsoleInputW = kernel32.NewProc("ReadConsoleInputW")
 
-	hConsoleIn windows.Handle
-	hInterrupt windows.Handle
+	// 0: ConsoleIn
+	// 1: Interrupt
+	handles [2]windows.Handle
 
 	quit = make(chan bool)
 )
@@ -214,9 +218,9 @@ func inputEventsProducer() {
 		numberOfEventsRead dword // this won't cause heap allocation
 	)
 	for {
-		// Wait for a single event
-		// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject
-		event, err := windows.WaitForSingleObject(hConsoleIn, uint32(windows.INFINITE))
+		// Wait for multiple events
+		// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitformultipleobjects
+		event, err := windows.WaitForMultipleObjects(handles[:], false, uint32(windows.INFINITE))
 		if event == windows.WAIT_FAILED && !produceEvent(KeyEvent{Err: err}) {
 			return
 		}
@@ -227,7 +231,7 @@ func inputEventsProducer() {
 		}
 
 		// Get console input
-		r0, _, err := k32_ReadConsoleInputW.Call(uintptr(hConsoleIn), uintptr(unsafe.Pointer(&input[0])), 1, uintptr(unsafe.Pointer(&numberOfEventsRead)))
+		r0, _, err := k32_ReadConsoleInputW.Call(uintptr(handles[ConsoleIn]), uintptr(unsafe.Pointer(&input[0])), 1, uintptr(unsafe.Pointer(&numberOfEventsRead)))
 		if int(r0) == 0 {
 			if !produceEvent(KeyEvent{Err: err}) {
 				return
@@ -248,14 +252,14 @@ func inputEventsProducer() {
 
 func initConsole() (err error) {
 	// Create an interrupt event
-	hInterrupt, err = windows.CreateEvent(nil, 0, 0, nil)
+	handles[Interrupt], err = windows.CreateEvent(nil, 0, 0, nil)
 	if err != nil {
 		return err
 	}
 
-	hConsoleIn, err = windows.Open("CONIN$", windows.O_RDWR, 0)
+	handles[ConsoleIn], err = windows.Open("CONIN$", windows.O_RDWR, 0)
 	if err != nil {
-		windows.Close(hInterrupt)
+		windows.Close(handles[Interrupt])
 		return
 	}
 
@@ -265,9 +269,9 @@ func initConsole() (err error) {
 
 func releaseConsole() {
 	// Stop events producer
-	windows.SetEvent(hInterrupt)
+	windows.SetEvent(handles[Interrupt])
 	quit <- true
 
-	windows.Close(hConsoleIn)
-	windows.Close(hInterrupt)
+	windows.Close(handles[Interrupt])
+	windows.Close(handles[ConsoleIn])
 }
