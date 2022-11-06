@@ -78,4 +78,42 @@ func main() {
 		}
 	}
 }
+
+```
+Example of getting continuous keystrokes with `GetAllKeys()` function:
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/eiannone/keyboard"
+)
+
+func main() {		
+	if err := keyboard.Open(); err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		_ = keyboard.Close()
+	}()
+
+	fmt.Println("Press ESC to quit")
+
+	keyEvents := keyboard.GetAllKeys() // return's a channel of "KeyEvent"
+
+	for ev := range keyEvents {
+		if ev.Err != nil {
+			panic(err)
+		}
+
+		fmt.Printf("You pressed: rune %q, key %X\r\n", ev.Rune, ev.Key)
+
+		if key == keyboard.KeyEsc {
+			break
+		}
+
+	}
+
+}
 ```
