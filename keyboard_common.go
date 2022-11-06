@@ -229,3 +229,26 @@ func GetSingleKey() (ch rune, key Key, err error) {
 	}
 	return
 }
+
+func GetAllKeys() <-chan KeyEvent {
+	keyEventChan := make(chan KeyEvent)
+
+	go func(chan<- KeyEvent) {
+		for {
+			ke := KeyEvent{}
+
+			ke.Rune, ke.Key, ke.Err = GetKey()
+
+			if ke.Err != nil {
+				keyEventChan <- ke
+				close(keyEventChan)
+				return
+			}
+
+			keyEventChan <- ke
+
+		}
+	}(keyEventChan)
+
+	return keyEventChan
+}
