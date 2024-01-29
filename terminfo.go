@@ -56,6 +56,7 @@ var (
 		{"rxvt-unicode", rxvt_keys},
 		{"rxvt-256color", rxvt_keys},
 		{"linux", linux_keys},
+		{"tmux-256color", linux_keys},
 	}
 )
 
