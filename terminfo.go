@@ -53,6 +53,7 @@ var (
 		{"screen", screen_keys},
 		{"xterm", xterm_keys},
 		{"xterm-256color", xterm_keys},
+		{"tmux-256color", xterm_keys},
 		{"rxvt-unicode", rxvt_keys},
 		{"rxvt-256color", rxvt_keys},
 		{"linux", linux_keys},
