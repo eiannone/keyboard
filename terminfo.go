@@ -53,6 +53,7 @@ var (
 		{"screen", screen_keys},
 		{"xterm", xterm_keys},
 		{"xterm-256color", xterm_keys},
+		{"xterm-ghostty", xterm_keys},
 		{"rxvt-unicode", rxvt_keys},
 		{"rxvt-256color", rxvt_keys},
 		{"linux", linux_keys},
@@ -153,6 +154,7 @@ func setup_term_builtin() error {
 	}{
 		{"xterm", xterm_keys},
 		{"xterm-256color", xterm_keys},
+		{"ghostty", xterm_keys},
 		{"rxvt", rxvt_keys},
 		{"rxvt-unicode", rxvt_keys},
 		{"rxvt-256color", rxvt_keys},
