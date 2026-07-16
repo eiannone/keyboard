@@ -35,6 +35,13 @@ var (
 	screen_keys = []string{
 		"\x1bOP", "\x1bOQ", "\x1bOR", "\x1bOS", "\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~", "\x1b[2~", "\x1b[3~", "\x1b[1~", "\x1b[4~", "\x1b[5~", "\x1b[6~", "\x1bOA", "\x1bOB", "\x1bOD", "\x1bOC",
 	}
+	// tmux translates keys itself and emits the same sequences whatever the
+	// outer terminal is: like screen for Home/End (\E[1~, \E[4~), but cursor
+	// keys are sent in normal mode (\E[A...) since keypad transmit mode
+	// (smkx) is never enabled by this library.
+	tmux_keys = []string{
+		"\x1bOP", "\x1bOQ", "\x1bOR", "\x1bOS", "\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~", "\x1b[2~", "\x1b[3~", "\x1b[1~", "\x1b[4~", "\x1b[5~", "\x1b[6~", "\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C",
+	}
 	xterm_keys = []string{
 		"\x1bOP", "\x1bOQ", "\x1bOR", "\x1bOS", "\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~", "\x1b[2~", "\x1b[3~", "\x1b[H", "\x1b[F", "\x1b[5~", "\x1b[6~", "\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C",
 	}
@@ -51,6 +58,8 @@ var (
 	}{
 		{"Eterm", eterm_keys},
 		{"screen", screen_keys},
+		{"tmux", tmux_keys},
+		{"tmux-256color", tmux_keys},
 		{"xterm", xterm_keys},
 		{"xterm-256color", xterm_keys},
 		{"rxvt-unicode", rxvt_keys},
@@ -158,6 +167,7 @@ func setup_term_builtin() error {
 		{"rxvt-256color", rxvt_keys},
 		{"linux", linux_keys},
 		{"Eterm", eterm_keys},
+		{"tmux", tmux_keys},
 		{"screen", screen_keys},
 		// let's assume that 'cygwin' is xterm compatible
 		{"cygwin", xterm_keys},
@@ -179,6 +189,14 @@ func setup_term() (err error) {
 	var data []byte
 	var header [6]int16
 	var str_offset, table_offset int16
+
+	// Inside tmux, keys are translated by tmux itself so the sequences do
+	// not depend on TERM (usually screen* or tmux*, whose terminfo entries
+	// would describe cursor keys in a mode this library never enables).
+	if os.Getenv("TMUX") != "" {
+		keys = tmux_keys
+		return nil
+	}
 
 	data, err = load_terminfo()
 	if err != nil {
